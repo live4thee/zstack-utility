@@ -77,20 +77,19 @@ class ZStackElasticBlockStoragePlugin(kvmagent.KvmAgent):
     def create_root_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateRootVolumeRsp()
+        templatePath, volumeUuid = cmd.templatePathInCache, cmd.volumeUuid
 
-        if not os.path.exists(cmd.templatePathInCache):
+        if not os.path.exists(templatePath):
             rsp.error = "UNABLE_TO_FIND_IMAGE_IN_CACHE"
             rsp.success = False
             return jsonobject.dumps(rsp)
 
-        # TODO
-        # drbdcon to deploy the template after converting to raw
-        d = os.path.dirname(cmd.templatePathInCache)
-        installPath = os.path.join(d, uuidhelper.UUID.uuid() + '.qcow2')
-        shell.call('/bin/cp -f %s %s' % (cmd.templatePathInCache, installPath))
+        shell.call('drbdcon deploy-volume -name %s -file %s' % (volumeUuid, templatePath))
+        output = shell.call('drbdcon show-volume -name ' + volumeUuid)
+        volinfo = jsonobject.loads(output)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
-        rsp.primaryStorageInstallPath = installPath
+        rsp.primaryStorageInstallPath = '/dev/drbd'+str(volinfo.minor)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
